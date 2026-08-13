@@ -1,17 +1,18 @@
 /**
- * dsh-doctor, host half: registers the `dsh_doctor` tool on `ctx.tools`.
- * Host-only: no client bundle, no web surface. The tool result renders as
- * ordinary text on every surface (TUI, headless, web).
+ * dsh-doctor, host half: registers `dsh_doctor` (diagnose) and
+ * `dsh_doctor_fix` (repair) tools on `ctx.tools`.
+ * Host-only: no client bundle, no web surface.
  *
  * @module @dsh-external/dsh-doctor
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { doctorTool } from './tool.ts'
+import { doctorTool, doctorFixTool } from './tool.ts'
 
-export { DOCTOR_TOOL_NAME } from './tool.ts'
+export { DOCTOR_TOOL_NAME, DOCTOR_FIX_TOOL_NAME } from './tool.ts'
 export type { DiagnosticCheck, DiagnosticReport } from './diagnose.ts'
+export type { RepairAction, RepairReport, RepairScope } from './repair.ts'
 
 /** Cordis plugin name. */
 export const name = 'dsh-doctor'
@@ -30,9 +31,10 @@ export const Config: z<Config> = z.object({
 })
 
 /**
- * Register the dsh_doctor tool.
+ * Register the dsh_doctor and dsh_doctor_fix tools.
  * @param ctx - registrant context.
  */
 export function apply(ctx: Context): void {
   ctx.tools.register(doctorTool())
+  ctx.tools.register(doctorFixTool())
 }

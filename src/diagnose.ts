@@ -5,7 +5,7 @@
  * @module @dsh-external/dsh-doctor/diagnose
  */
 
-import { execFile } from 'node:child_process'
+import { exec, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -14,6 +14,7 @@ import net from 'node:net'
 import http from 'node:http'
 
 const execFileAsync = promisify(execFile)
+const execAsync = promisify(exec)
 
 export interface DiagnosticCheck {
   kind: string
@@ -39,9 +40,10 @@ function resolveDshHome(): string {
 
 async function runVersion(cmd: string, args: string[]): Promise<string | null> {
   try {
-    // shell: true on Windows resolves npm global .cmd shims (pnpm, dsh);
-    // cmd is hardcoded here, never user input, so injection is not a concern.
-    const { stdout } = await execFileAsync(cmd, args, { timeout: 10000, shell: process.platform === 'win32' })
+    // exec uses the platform shell, which resolves npm global .cmd shims
+    // (pnpm, dsh) on Windows. cmd and args are hardcoded here, never user
+    // input, so concatenation is not an injection vector.
+    const { stdout } = await execAsync(cmd + ' ' + args.join(' '), { timeout: 10000 })
     return stdout.trim()
   } catch {
     return null
@@ -175,7 +177,7 @@ export async function runDiagnostic(profile: string, port: number): Promise<Diag
 
   // 6. Config mount
   try {
-    const { stdout } = await execFileAsync('dsh', ['--profile', profile, '--dump-config'], { timeout: 30000, shell: process.platform === 'win32' })
+    const { stdout } = await execAsync('dsh --profile ' + profile + ' --dump-config', { timeout: 30000 })
     checks.push({ kind: 'mount', status: 'ok', detail: '--dump-config succeeded' })
     for (const core of ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']) {
       if (stdout.includes(core)) checks.push({ kind: 'mount', status: 'ok', detail: 'core bundle mounted: ' + core })
