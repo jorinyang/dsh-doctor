@@ -21,7 +21,7 @@ DeepSeek Harness does not ship a built-in `doctor` command. When DSH crashes, fa
 
 ```sh
 # from npm
-dsh plugin --profile web add @dsh-external/dsh-doctor
+dsh plugin --profile web add @jorinyang/dsh-doctor
 
 # or from GitHub
 dsh plugin --profile web add github:jorinyang/dsh-doctor

@@ -1,5 +1,5 @@
 {
-  "name": "@dsh-external/dsh-doctor",
+  "name": "@jorinyang/dsh-doctor",
   "description": "DeepSeek Harness diagnostic and repair plugin: dsh_doctor (read-only diagnosis) and dsh_doctor_fix (graded safe/deps/full repair) for startup crashes, broken profiles, and config errors.",
   "version": "0.1.0",
   "type": "module",

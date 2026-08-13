@@ -21,7 +21,7 @@ DeepSeek Harness 没有内置 `doctor` 命令。当 DSH 崩溃、无法启动、
 
 ```sh
 # 从 npm 安装
-dsh plugin --profile web add @dsh-external/dsh-doctor
+dsh plugin --profile web add @jorinyang/dsh-doctor
 
 # 或从 GitHub 安装
 dsh plugin --profile web add github:jorinyang/dsh-doctor
