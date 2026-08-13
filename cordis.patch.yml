@@ -1,0 +1,4 @@
+# dsh-doctor bundle patch: inserts this plugin into a profile's layer stack.
+- insert:
+    - id: dsh-doctor
+      name: '@dsh-external/dsh-doctor'
