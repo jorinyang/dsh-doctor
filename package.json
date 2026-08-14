@@ -1,7 +1,7 @@
 {
   "name": "@jorinyang/dsh-doctor",
   "description": "DeepSeek Harness diagnostic and repair plugin: dsh_doctor (read-only diagnosis) and dsh_doctor_fix (graded safe/deps/full repair) for startup crashes, broken profiles, and config errors.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

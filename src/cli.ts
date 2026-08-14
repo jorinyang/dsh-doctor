@@ -53,7 +53,7 @@ function mark(status: string): string {
 }
 
 // ── Version (embedded at build time) ────────────────────────
-const VERSION = '0.1.1'
+const VERSION = '0.2.0'
 
 
 // ── Setup: register to system PATH ─────────────────────────
