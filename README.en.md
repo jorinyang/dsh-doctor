@@ -1,196 +1,262 @@
-# dsh-doctor
+<div align="center">
 
-> **DSH crashed? Can't start? Use: [dsh-doctor](https://github.com/jorinyang/dsh-doctor)**
+# 🩺 dsh-doctor
 
-[![license](https://badgen.net/badge/license/MIT/green)](LICENSE) [![topic](https://badgen.net/badge/topic/dsh-plugin/8257D0)](https://github.com/topics/dsh-plugin)
+### Your personal doctor for DeepSeek Harness
 
-中文文档见 [README.md](./README.md)。
+**Diagnose · Reversible Repair · One-click Rollback · Runtime Self-healing**
+
+[![npm](https://img.shields.io/npm/v/@jorinyang/dsh-doctor?style=for-the-badge&color=2563eb&label=npm)](https://www.npmjs.com/package/@jorinyang/dsh-doctor)
+[![downloads](https://img.shields.io/npm/dm/@jorinyang/dsh-doctor?style=for-the-badge&color=16a34a&label=downloads)](https://www.npmjs.com/package/@jorinyang/dsh-doctor)
+[![license](https://img.shields.io/npm/l/@jorinyang/dsh-doctor?style=for-the-badge&color=dc2626&label=MIT)](LICENSE)
+[![stars](https://img.shields.io/github/stars/jorinyang/dsh-doctor?style=for-the-badge&color=f59e0b&label=Star)](https://github.com/jorinyang/dsh-doctor)
+
+**中文** · [README.md](./README.md)
+
+</div>
 
 ---
 
-## Two commands to fix your DSH
+> **DSH crashed? Can't start?**
+>
+> Two commands to catch your emotions and fix the root cause.
 
-```sh
-# Install
+```bash
+# ① Install
 dsh plugin --profile web add @jorinyang/dsh-doctor
 
-# Fix
+# ② Fix
 dsh-doctor
 ```
 
-Built-in CLI, auto-registered to system PATH on install. Repairs are fully reversible.
-
-**DeepSeek Harness, painlessly.**
+**Built-in CLI, auto-registered to system PATH on install. Repairs are fully reversible — roll back anytime.**
 
 ---
 
-## Why
+## 💡 What it is
 
-DeepSeek Harness does not ship a built-in `doctor` command. When DSH crashes, fails to start, or a plugin breaks the profile, there is no single command to tell you what is wrong and fix it.
+DeepSeek Harness ships no built-in `doctor` command. When DSH crashes, fails to start, or a plugin breaks the profile, you're left staring at errors and hoping a restart will help.
 
-`dsh-doctor` fills that gap with three tools and one runtime service:
+**dsh-doctor** is the first all-in-one "diagnose + repair + rollback" tool for DSH, and it's also a **runtime self-healing service**:
 
-- **`dsh_doctor`** — read-only diagnostic. Never mutates anything. Reports what is broken and why.
-- **`dsh_doctor_fix`** — repair with a risk-graded scope; every reversible change is journaled with an undo step.
-- **`dsh_doctor_rollback`** — undo a repair (LIFO), restoring the environment to its pre-repair state.
-- **`dsh-doctor` runtime service** — diagnose/repair/rollback API plus reactive plugin-lifecycle monitoring while DSH is alive.
+| Capability | Form | Description |
+|-----------|------|-------------|
+| 🔍 **Diagnose** | `dsh_doctor` tool / `dsh-doctor` CLI | Read-only 9-category checks |
+| 🔧 **Repair** | `dsh_doctor_fix` tool / `dsh-doctor fix` | Graded repair, every reversible change journaled |
+| ↩️ **Rollback** | `dsh_doctor_rollback` tool / `dsh-doctor rollback` | LIFO undo to the pre-repair state |
+| ⚡ **Runtime service** | `dsh-doctor` Cordis service | Live diagnose/self-heal/lifecycle monitoring |
 
-## Install
+---
 
-### As a DSH plugin (used by the agent)
+## ✨ Why dsh-doctor
 
-```sh
-# from npm
+### 🎯 Two commands to revive a crashed DSH
+
+No need to read error logs or hand-edit configs:
+
+```bash
+dsh-doctor          # diagnose first
+dsh-doctor fix      # then repair
+```
+
+### ↩️ Reversible repairs — safe to fix
+
+Every fix writes a **journal** recording the undo step of each change. Broke something? One command to undo:
+
+```bash
+dsh-doctor rollback              # undo the most recent repair
+dsh-doctor rollback --list       # list all journals
+dsh-doctor rollback --id <id>    # undo a specific journal
+```
+
+### ⚡ Runtime self-healing — works while DSH is alive
+
+Not just stop-and-fix. dsh-doctor wires into Cordis's native runtime:
+
+- `ctx.provide('dsh-doctor')` — expose diagnose/repair/rollback to other plugins
+- `ctx.on('internal/status')` — reactive plugin-lifecycle monitoring with FAILED alerts
+- `ctx.effect()` — reversible effects, no residue on unload
+
+### 🌍 Cross-platform, zero config
+
+Auto-registers to system PATH on install — Windows / macOS / Linux / fish.
+
+---
+
+## 🚀 Quick start
+
+### Option A: DSH plugin (for the agent)
+
+```bash
+# install from npm
 dsh plugin --profile web add @jorinyang/dsh-doctor
 
-# or from GitHub
-dsh plugin --profile web add github:jorinyang/dsh-doctor
-
-# then restart dsh web
+# restart dsh web
 dsh web
 ```
 
-After install, the three tools register on `ctx.tools` and the `dsh-doctor` service mounts on the Cordis context.
+Then ask the agent:
 
-### As a global CLI (direct command line use)
+```text
+run dsh_doctor                     # diagnose
+run dsh_doctor_fix with scope safe # repair
+run dsh_doctor_rollback            # rollback if needed
+```
 
-```sh
-# install globally
+### Option B: global CLI
+
+```bash
 npm install -g @jorinyang/dsh-doctor
-
-# or use npx
+# or
 npx @jorinyang/dsh-doctor
 ```
 
-Then use it directly:
+### Demo
 
-```sh
-# read-only diagnosis (default)
-dsh-doctor
+```bash
+$ dsh-doctor diagnose --profile web
 
-# repair (safe scope, recommended)
-dsh-doctor fix
+DSH Diagnostic Report  (profile: web, port: 3080)
+DSH home: ~/.dsh
 
-# repair + reinstall deps
-dsh-doctor fix --scope deps
+  [OK]   Node.js v24.15.0
+  [OK]   pnpm 11.9.0
+  [OK]   DSH 0.1.0-rc.6
+  [OK]   DSH home exists
+  [OK]   profile dir exists: web
+  ...
+  [XX]   bundle missing: some-broken-plugin
+         fix: Run pnpm install in profile dir
 
-# undo the most recent repair
-dsh-doctor rollback
-
-# list all repair journals
-dsh-doctor rollback --list
-
-# undo a specific journal
-dsh-doctor rollback --id <journal-id>
-
-# specify profile and port
-dsh-doctor diagnose --profile headless --port 8080
+  48 pass  0 fail  3 warn
+  ✓ No blocking issues found; DSH should start normally.
 ```
 
-CLI commands and options:
+---
 
-| Command/option | Description | Default |
-|----------------|-------------|---------|
-| `diagnose` / `check` | Read-only diagnosis (default) | ✓ |
-| `fix` / `repair` | Apply journaled repairs (reversible) | |
-| `rollback` / `undo` | Undo a repair (LIFO) | |
-| `setup` / `install` | Register to system PATH | |
+## 📖 Command reference
+
+| Command | Description | Alias |
+|---------|-------------|-------|
+| `dsh-doctor` | Read-only diagnose (default) | `diagnose` / `check` |
+| `dsh-doctor fix` | Reversible repair | `repair` |
+| `dsh-doctor rollback` | LIFO undo | `undo` |
+| `dsh-doctor rollback --list` | List journals | `journals` / `list` |
+| `dsh-doctor setup` | Register to PATH | `install` / `register` |
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
 | `--profile <name>` | DSH profile name | `web` |
 | `--port <number>` | Web port | `3080` |
 | `--scope <level>` | safe / deps / full | `safe` |
 | `--id <id>` | Journal id to roll back | most recent |
-| `--list` | List journals instead of rolling back | |
-| `-h, --help` | Show help | |
-| `-V, --version` | Show version | |
+| `-h, --help` | Help | |
+| `-V, --version` | Version | |
 
-Exit codes: `0` = all passed, `1` = failures found, `2` = runtime error.
-
-## PATH registration
-
-When installed via `dsh plugin add`, the plugin auto-registers the `dsh-doctor` command on system PATH during `postinstall` (Windows / macOS / Linux / fish).
-
-To register manually:
-
-```sh
-dsh-doctor setup
-```
-
-## Rollback: reversible repairs
-
-Every `fix` writes a **journal** (under `$DSH_HOME/dsh-doctor/journal/`) recording the undo step of each reversible change:
-
-- overwritten file → original content saved, restored on rollback;
-- created file/dir → deleted on rollback (empty dirs only);
-- system-boundary ops (pnpm install, killed processes) → flagged for manual compensation.
-
-Rollback replays these in **LIFO** (reverse) order to restore the pre-repair environment.
-
-## Runtime service (dynamic adjustment)
-
-While DSH is alive, `dsh-doctor` wires into Cordis's native runtime primitives:
-
-- **`ctx.provide('dsh-doctor')`** — exposes `diagnose` / `repair` / `rollback` / `journals` / `failures` to other plugins and the agent.
-- **`ctx.on('internal/status')`** — reactive coeffects: watches plugin-fiber lifecycle and emits `dsh-doctor/fiber-failed` when a fiber enters FAILED.
-- **`ctx.effect()`** — reversible effects: every resource the service owns is wrapped in a disposer, so unloading dsh-doctor leaves no residue.
-
-Other plugins can read the service via `ctx.get('dsh-doctor')` or listen to `dsh-doctor/fiber-failed` for self-healing.
-
-## Usage
-
-In a DSH conversation, ask the agent:
-
-```text
-# 1. diagnose first (read-only, always safe)
-run dsh_doctor
-
-# 2. repair with the recommended scope
-run dsh_doctor_fix with scope safe
-
-# 3. undo if needed
-run dsh_doctor_rollback
-
-# 4. escalate only if the safe pass did not resolve it
-run dsh_doctor_fix with scope deps   # adds pnpm install
-run dsh_doctor_fix with scope full   # adds residual process cleanup
-```
-
-## What dsh_doctor checks
-
-| Category | What it checks |
-|----------|----------------|
-| Environment | Node.js, pnpm, and dsh versions |
-| DSH home | home directory and required subdirectories |
-| Profile | profile directory, key files, node_modules |
-| Config syntax | package.json JSON validity, pnpm-workspace.yaml allowBuilds placeholders |
-| Bundle dependencies | declared bundles present, link dependencies resolvable |
-| Config mount | `dsh --dump-config` succeeds, core bundles mount |
-| Port | requested port is free |
-| Health | HTTP 200 on the web URL |
-| Disk | available space on the DSH home drive |
-
-Each check returns `ok` / `fail` / `warn` with a human-readable detail and, when it fails, a `fixHint`.
-
-## What dsh_doctor_fix repairs
-
-The `scope` parameter controls how far the repair goes:
+### Repair scopes
 
 | Scope | Actions | Risk |
 |-------|---------|------|
-| `safe` (default) | create missing dirs/files; fix allowBuilds placeholders | Low — files/config only |
-| `deps` | everything in `safe`, plus `pnpm install --fix-lockfile` | Medium — network + dependency changes |
-| `full` | everything in `deps`, plus stop residual DSH processes (skipped when DSH is healthy) | Higher — process termination |
+| `safe` ⭐ | create missing dirs/files; fix allowBuilds | 🟢 Low — files/config |
+| `deps` | safe + `pnpm install --fix-lockfile` | 🟡 Medium — network + deps |
+| `full` | deps + stop residual processes (skip if healthy) | 🔴 Higher — process kill |
 
-Every reversible action is journaled for rollback.
+---
 
-## Design
+## 🏗️ How it works
 
-- **Spatiotemporal composability** — aligned with DeepSeek Harness / Cordis's paradigm: reversible effects for repairs (temporal), reactive coeffects for the runtime service (spatial).
-- **Reversible repairs** — every change records an undo step; rollback restores via LIFO.
-- **Runtime service** — `ctx.provide` / `ctx.on` / `ctx.effect` for dynamic monitoring and self-healing.
-- **Host-only** — tools + service on the host side; no client bundle, no web surface.
-- **Cross-platform** — Node.js primitives, no shell scripts.
-- **Idempotent** — repairs and rollbacks are safe to re-run.
+dsh-doctor aligns with DeepSeek Harness / Cordis's **Spatiotemporal Composability** paradigm:
 
-## License
+```mermaid
+flowchart LR
+    subgraph CLI["🔧 dsh-doctor CLI (offline)"]
+        D[Diagnose]
+        F[Repair]
+        R[Rollback]
+    end
 
-MIT
+    subgraph Runtime["⚡ Runtime service (online)"]
+        SVC[dsh-doctor service]
+        WATCH[Lifecycle monitor]
+    end
+
+    DSH["🖥️ DeepSeek Harness"]
+
+    D -->|finds issues| F
+    F -->|writes journal| R
+    R -->|LIFO restore| DSH
+    F -->|reversible changes| DSH
+
+    SVC -->|diagnose/repair/rollback| DSH
+    WATCH -->|internal/status| DSH
+```
+
+### Temporal — reversible repairs
+
+Every change records a **reverse undo function**; rollback replays LIFO:
+
+- overwritten file → original saved, restored on rollback
+- created file/dir → deleted on rollback (empty dirs only)
+- system-boundary ops (pnpm install, killed processes) → flagged manual
+
+### Spatial — runtime self-healing
+
+Wires into Cordis primitives to declare deps and react to changes:
+
+- `ctx.provide` — provide services
+- `ctx.on` — reactive listeners
+- `ctx.effect` — reversible effects
+
+---
+
+## 🆚 vs. traditional approaches
+
+| | Restart roulette | Hand-edit config | **dsh-doctor** |
+|---|---|---|---|
+| Diagnose | ❌ guesswork | ⚠️ experience | ✅ 9 automated checks |
+| Repair | ❌ kill & retry | ⚠️ error-prone | ✅ graded auto-repair |
+| Rollback | ❌ none | ❌ none | ✅ one-click LIFO |
+| Runtime adjust | ❌ restart only | ❌ downtime | ✅ Cordis service |
+| Cross-platform | — | — | ✅ Win/macOS/Linux/fish |
+
+---
+
+## ❓ FAQ
+
+**Q: DSH is so broken the plugin can't load — still usable?**
+
+Yes. `dsh-doctor` is a self-contained CLI that doesn't depend on DSH running. Just run `dsh-doctor fix`.
+
+**Q: Will repair break my config?**
+
+No. Every reversible change records an undo step first. `dsh-doctor rollback` restores it.
+
+**Q: safe / deps / full — which to pick?**
+
+Start with `safe` (files/config only, zero risk). Escalate to `deps` (reinstall) then `full` (process cleanup) only if needed.
+
+**Q: Does it conflict with built-in DSH commands?**
+
+No. It's an independent plugin + CLI; it doesn't modify DSH core.
+
+---
+
+## 🤝 Contributing
+
+Issues and PRs welcome. For bug reports, please include `dsh-doctor diagnose` output.
+
+## 📄 License
+
+[MIT](LICENSE)
+
+---
+
+<div align="center">
+
+**DeepSeek Harness, painlessly.** 🎉
+
+If it helped you, ⭐ Star this repo!
+
+</div>

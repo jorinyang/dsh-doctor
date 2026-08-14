@@ -60,7 +60,7 @@ function mark(status: string): string {
 }
 
 // ── Version (embedded at build time) ────────────────────────
-const VERSION = '0.3.1'
+const VERSION = '0.3.2'
 
 // ── Setup: register to system PATH ─────────────────────────
 function getNpmGlobalBin(): string | null {
