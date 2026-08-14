@@ -1,6 +1,6 @@
 # dsh-doctor
 
-> DeepSeek Harness environment diagnostic and repair tool. Diagnose why DSH will not start, then repair it — with a graded, safe-by-default fix scope.
+> **DSH crashed? Can't start? Use: [dsh-doctor](https://github.com/jorinyang/dsh-doctor)**
 
 [![license](https://badgen.net/badge/license/MIT/green)](LICENSE) [![topic](https://badgen.net/badge/topic/dsh-plugin/8257D0)](https://github.com/topics/dsh-plugin)
 
@@ -8,11 +8,27 @@
 
 ---
 
+## Two commands to fix your DSH
+
+```sh
+# Install
+dsh plugin --profile web add @jorinyang/dsh-doctor
+
+# Fix
+dsh-doctor
+```
+
+Built-in CLI, auto-registered to system PATH on install. Just run it.
+
+**DeepSeek Harness, painlessly.**
+
+---
+
 ## Why
 
 DeepSeek Harness does not ship a built-in `doctor` command. When DSH crashes, fails to start, or a plugin breaks the profile, there is no single command to tell you what is wrong and fix it.
 
-`dsh-doctor` fills that gap with two model-facing tools:
+`dsh-doctor` fills that gap with two tools:
 
 - **`dsh_doctor`** — read-only diagnostic. Never mutates anything. Reports what is broken and why.
 - **`dsh_doctor_fix`** — repair with a risk-graded scope. Every action is idempotent and backs up before overwriting.

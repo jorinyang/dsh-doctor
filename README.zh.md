@@ -1,6 +1,6 @@
 # dsh-doctor
 
-> DeepSeek Harness 环境诊断与修复工具。诊断 DSH 为什么无法启动，然后修复它——采用分级、默认安全的修复范围。
+> **崩溃报错，无法启动，请用：[dsh-doctor](https://github.com/jorinyang/dsh-doctor)**
 
 [![license](https://badgen.net/badge/license/MIT/green)](LICENSE) [![topic](https://badgen.net/badge/topic/dsh-plugin/8257D0)](https://github.com/topics/dsh-plugin)
 
@@ -8,16 +8,34 @@ English docs: [README.md](./README.md)。
 
 ---
 
+## 两行命令接住你的情绪，解决你崩溃的源头
+
+```sh
+# 安装
+dsh plugin --profile web add @jorinyang/dsh-doctor
+
+# 修复
+dsh-doctor
+```
+
+自带 CLI，安装自动注册到系统 PATH，直接执行即可。
+
+**无痛折腾 DeepSeek Harness**
+
+---
+
 ## 为什么需要它
 
 DeepSeek Harness 没有内置 `doctor` 命令。当 DSH 崩溃、无法启动、或某个插件破坏了 profile 时，没有一条命令能告诉你问题出在哪并修复它。
 
-`dsh-doctor` 用两个面向模型（agent）的工具填补这个空缺：
+`dsh-doctor` 用两个工具填补这个空缺：
 
 - **`dsh_doctor`** — 只读诊断。绝不改动任何东西，只报告哪里坏了、为什么。
 - **`dsh_doctor_fix`** — 按风险分级修复。每个动作幂等，覆盖前先备份。
 
 ## 安装
+
+### 作为 DSH 插件（Agent 内使用）
 
 ```sh
 # 从 npm 安装
@@ -31,6 +49,62 @@ dsh web
 ```
 
 安装后，两个工具会注册到 `ctx.tools`。需要重启 web profile，让 bundle 层在启动时完成合成。
+
+### 作为全局 CLI（命令行直接使用）
+
+```sh
+# 全局安装
+npm install -g @jorinyang/dsh-doctor
+
+# 或直接用 npx
+npx @jorinyang/dsh-doctor
+```
+
+安装后可直接在命令行使用。
+
+```sh
+# 只读诊断（默认）
+dsh-doctor
+
+# 修复（safe 范围，推荐）
+dsh-doctor fix
+
+# 修复（deps 范围，包含 pnpm install）
+dsh-doctor fix --scope deps
+
+# 指定 profile 和端口
+dsh-doctor diagnose --profile headless --port 8080
+```
+
+CLI 选项：
+
+| 选项 | 说明 | 默认值 |
+|------|------|--------|
+| `diagnose` / `check` | 只读诊断（默认命令） | ✓ |
+| `fix` / `repair` | 执行修复 | |
+| `--profile <name>` | DSH profile 名称 | `web` |
+| `--port <number>` | Web 端口 | `3080` |
+| `--scope <level>` | 修复范围：safe / deps / full | `safe` |
+| `-h, --help` | 显示帮助 | |
+| `-V, --version` | 显示版本 | |
+
+退出码：`0` = 全部通过，`1` = 有失败项，`2` = 运行错误。
+
+## PATH 注册
+
+当通过 `dsh plugin add` 安装时，插件会在 `postinstall` 阶段自动注册 `dsh-doctor` 命令到系统 PATH。
+
+如果自动注册失败，可以手动执行：
+
+```sh
+# 在 DSH profile 目录下执行
+node node_modules/@jorinyang/dsh-doctor/lib/cli.js setup
+
+# 或者如果 dsh-doctor 已经在 PATH 中
+dsh-doctor setup
+```
+
+注册后，你可以在任何终端使用 `dsh-doctor` 命令。
 
 ## 使用方式
 

@@ -11,7 +11,9 @@ import z from '@deepseek-ai/schemastery'
 import { doctorTool, doctorFixTool } from './tool.ts'
 
 export { DOCTOR_TOOL_NAME, DOCTOR_FIX_TOOL_NAME } from './tool.ts'
+export { runDiagnostic } from './diagnose.ts'
 export type { DiagnosticCheck, DiagnosticReport } from './diagnose.ts'
+export { runRepair } from './repair.ts'
 export type { RepairAction, RepairReport, RepairScope } from './repair.ts'
 
 /** Cordis plugin name. */

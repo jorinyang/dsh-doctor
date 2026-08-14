@@ -28,6 +28,7 @@ interface DiagnosticReport {
   warnCount: number;
   summary: string;
 }
+declare function runDiagnostic(profile: string, port: number): Promise<DiagnosticReport>;
 //#endregion
 //#region src/repair.d.ts
 /**
@@ -54,6 +55,8 @@ interface RepairReport {
   failedCount: number;
   summary: string;
 }
+/** Run the repair. All actions are idempotent. */
+declare function runRepair(profile: string, port: number, scope: RepairScope): Promise<RepairReport>;
 //#endregion
 //#region src/index.d.ts
 /** Cordis plugin name. */
@@ -73,4 +76,4 @@ declare const Config: z<Config>;
  */
 declare function apply(ctx: Context): void;
 //#endregion
-export { Config, DOCTOR_FIX_TOOL_NAME, DOCTOR_TOOL_NAME, type DiagnosticCheck, type DiagnosticReport, type RepairAction, type RepairReport, type RepairScope, apply, inject, name };
+export { Config, DOCTOR_FIX_TOOL_NAME, DOCTOR_TOOL_NAME, type DiagnosticCheck, type DiagnosticReport, type RepairAction, type RepairReport, type RepairScope, apply, inject, name, runDiagnostic, runRepair };
