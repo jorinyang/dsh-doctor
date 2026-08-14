@@ -2,7 +2,7 @@
  * dsh-doctor diagnosis engine: read-only checks returning a structured report.
  * All checks are read-only; the tool returns fix hints rather than mutating state.
  *
- * @module @dsh-external/dsh-doctor/diagnose
+ * @module @jorinyang/dsh-doctor/diagnose
  */
 
 import { exec, execFile } from 'node:child_process'

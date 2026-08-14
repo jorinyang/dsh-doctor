@@ -18,7 +18,7 @@ dsh plugin --profile web add @jorinyang/dsh-doctor
 dsh-doctor
 ```
 
-自带 CLI，安装自动注册到系统 PATH，直接执行即可。
+自带 CLI，安装自动注册到系统 PATH，直接执行即可。修复全程可回滚。
 
 **无痛折腾 DeepSeek Harness**
 
@@ -28,10 +28,12 @@ dsh-doctor
 
 DeepSeek Harness 没有内置 `doctor` 命令。当 DSH 崩溃、无法启动、或某个插件破坏了 profile 时，没有一条命令能告诉你问题出在哪并修复它。
 
-`dsh-doctor` 用两个工具填补这个空缺：
+`dsh-doctor` 用三个工具 + 一个运行时服务填补这个空缺：
 
 - **`dsh_doctor`** — 只读诊断。绝不改动任何东西，只报告哪里坏了、为什么。
-- **`dsh_doctor_fix`** — 按风险分级修复。每个动作幂等，覆盖前先备份。
+- **`dsh_doctor_fix`** — 按风险分级修复，每个可逆改动都记录 undo 步骤（journaled）。
+- **`dsh_doctor_rollback`** — 撤销一次修复（LIFO 逆序回滚），恢复到修复前状态。
+- **`dsh-doctor` 运行时服务** — 在 DSH 存活时提供诊断/修复/回滚 API，并响应式监控插件生命周期。
 
 ## 安装
 
@@ -48,7 +50,7 @@ dsh plugin --profile web add github:jorinyang/dsh-doctor
 dsh web
 ```
 
-安装后，两个工具会注册到 `ctx.tools`。需要重启 web profile，让 bundle 层在启动时完成合成。
+安装后，三个工具会注册到 `ctx.tools`，同时 `dsh-doctor` 服务挂载到 Cordis 上下文。
 
 ### 作为全局 CLI（命令行直接使用）
 
@@ -60,7 +62,7 @@ npm install -g @jorinyang/dsh-doctor
 npx @jorinyang/dsh-doctor
 ```
 
-安装后可直接在命令行使用。
+安装后可直接在命令行使用：
 
 ```sh
 # 只读诊断（默认）
@@ -72,19 +74,32 @@ dsh-doctor fix
 # 修复（deps 范围，包含 pnpm install）
 dsh-doctor fix --scope deps
 
+# 回滚最近一次修复
+dsh-doctor rollback
+
+# 列出所有修复日志
+dsh-doctor rollback --list
+
+# 回滚指定日志
+dsh-doctor rollback --id <journal-id>
+
 # 指定 profile 和端口
 dsh-doctor diagnose --profile headless --port 8080
 ```
 
 CLI 选项：
 
-| 选项 | 说明 | 默认值 |
-|------|------|--------|
+| 命令/选项 | 说明 | 默认值 |
+|-----------|------|--------|
 | `diagnose` / `check` | 只读诊断（默认命令） | ✓ |
-| `fix` / `repair` | 执行修复 | |
+| `fix` / `repair` | 执行修复（可回滚） | |
+| `rollback` / `undo` | 撤销修复（LIFO） | |
+| `setup` / `install` | 注册到系统 PATH | |
 | `--profile <name>` | DSH profile 名称 | `web` |
 | `--port <number>` | Web 端口 | `3080` |
 | `--scope <level>` | 修复范围：safe / deps / full | `safe` |
+| `--id <id>` | 回滚目标 journal id | 最近一次 |
+| `--list` | 列出 journal 而非回滚 | |
 | `-h, --help` | 显示帮助 | |
 | `-V, --version` | 显示版本 | |
 
@@ -92,19 +107,33 @@ CLI 选项：
 
 ## PATH 注册
 
-当通过 `dsh plugin add` 安装时，插件会在 `postinstall` 阶段自动注册 `dsh-doctor` 命令到系统 PATH。
+当通过 `dsh plugin add` 安装时，插件会在 `postinstall` 阶段自动注册 `dsh-doctor` 命令到系统 PATH（Windows / macOS / Linux / fish 全覆盖）。
 
 如果自动注册失败，可以手动执行：
 
 ```sh
-# 在 DSH profile 目录下执行
-node node_modules/@jorinyang/dsh-doctor/lib/cli.js setup
-
-# 或者如果 dsh-doctor 已经在 PATH 中
 dsh-doctor setup
 ```
 
-注册后，你可以在任何终端使用 `dsh-doctor` 命令。
+## 回滚：修复可逆
+
+每次 `fix` 都会生成一个 **journal**（存放在 `$DSH_HOME/dsh-doctor/journal/`），记录每一个可逆改动的 undo 步骤：
+
+- 覆盖文件 → 保存原始内容，回滚时恢复；
+- 新建文件/目录 → 回滚时删除（仅空目录）；
+- `pnpm install`、杀进程等系统边界操作 → 标记为「需手动补偿」。
+
+回滚按 **LIFO（后进先出）** 逆序执行，把环境恢复到修复前。
+
+## 运行时服务（动态调整）
+
+当 DSH 存活时，`dsh-doctor` 通过 Cordis 原生能力提供运行时服务：
+
+- **`ctx.provide('dsh-doctor')`** — 暴露 `diagnose` / `repair` / `rollback` / `journals` / `failures` 方法给其他插件和 agent。
+- **`ctx.on('internal/status')`** — 响应式协效应：监控插件 fiber 生命周期，检测到 FAILED 时记录并发出 `dsh-doctor/fiber-failed` 事件。
+- **`ctx.effect()`** — 可逆效应：服务持有的所有资源都挂在 disposer 上，卸载 dsh-doctor 时无残留。
+
+其他插件可通过 `ctx.get('dsh-doctor')` 获取服务，或监听 `dsh-doctor/fiber-failed` 事件做自愈。
 
 ## 使用方式
 
@@ -117,15 +146,12 @@ dsh-doctor setup
 # 2. 用推荐的范围修复
 用 safe 范围运行 dsh_doctor_fix
 
-# 3. 只有 safe 未解决时才升级
+# 3. 修复后如需撤销
+运行 dsh_doctor_rollback
+
+# 4. 只有 safe 未解决时才升级
 用 deps 范围运行 dsh_doctor_fix   # 追加 pnpm install
 用 full 范围运行 dsh_doctor_fix   # 追加残留进程清理
-```
-
-两个工具都接受可选的 `profile`（默认 `web`）和 `port`（默认 `3080`）参数：
-
-```text
-用 profile headless port 8080 运行 dsh_doctor
 ```
 
 ## dsh_doctor 检查什么
@@ -142,31 +168,24 @@ dsh-doctor setup
 | 健康 | Web URL 是否返回 HTTP 200 |
 | 磁盘 | DSH home 所在盘剩余空间 |
 
-每项检查返回 `ok` / `fail` / `warn`，附带可读详情；失败时还会给出 `fixHint` 修复建议。
-
 ## dsh_doctor_fix 修复什么
 
 `scope` 参数控制修复的深入程度：
 
 | 范围 | 动作 | 风险 |
 |------|------|------|
-| `safe`（默认） | 创建缺失的 DSH home/profile 目录；修复 `pnpm-workspace.yaml` 的 allowBuilds 占位符；创建缺失的 `cordis.patch.yml`；备份损坏的 `package.json` | 低——仅文件/配置 |
+| `safe`（默认） | 创建缺失目录/文件；修复 allowBuilds 占位符 | 低——仅文件/配置 |
 | `deps` | safe 全部，外加 `pnpm install --fix-lockfile` | 中——网络 + 依赖变更 |
 | `full` | deps 全部，外加停止残留 DSH 进程（DSH 健康时跳过） | 较高——进程终止 |
 
-每个改动动作都幂等，覆盖前先备份（`.bak.<时间戳>`）。
-
 ## 设计
 
-- **仅 host** — 两个工具注册在 `ctx.tools`；无 client bundle、无 Web 界面。结果在所有界面（TUI、headless、web）都以普通文本呈现。
-- **跨平台** — 基于 Node.js 原生模块（`child_process`、`fs`、`net`、`http`）实现，不依赖 shell 脚本。
-- **只读诊断** — `dsh_doctor` 绝不改动状态。
-- **分级修复** — `dsh_doctor_fix` 的 scope 控制风险；优先用 `safe`。
-- **幂等** — 修复可安全重复执行。
-
-## 故障排查
-
-如果 DSH 本身坏到连插件都无法加载，同样的诊断逻辑也提供了独立的 PowerShell 脚本：`scripts/dsh-doctor.ps1`（见更早的独立工具版本）。
+- **时空可组合** — 对齐 DeepSeek Harness / Cordis 的「时空可组合」范式：修复是可逆效应（Temporal），运行时服务是响应式协效应（Spatial）。
+- **可逆修复** — 每个改动记录 undo 步骤，回滚按 LIFO 恢复环境。
+- **运行时服务** — 通过 `ctx.provide` / `ctx.on` / `ctx.effect` 接入 Cordis 运行时，动态监控与自愈。
+- **仅 host** — 工具 + 服务都在 host 侧；无 client bundle、无 Web 界面。
+- **跨平台** — 基于 Node.js 原生模块，不依赖 shell 脚本。
+- **幂等** — 修复可安全重复执行；回滚同样幂等。
 
 ## 许可证
 

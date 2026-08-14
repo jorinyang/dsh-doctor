@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 /**
- * dsh-doctor CLI: standalone command-line entry for diagnose & repair.
+ * dsh-doctor CLI: standalone command-line entry for diagnose, repair, and rollback.
  *
  * Usage:
- *   dsh doctor                     # diagnose (read-only)
- *   dsh doctor diagnose            # same
- *   dsh doctor fix                 # repair with scope=safe
- *   dsh doctor fix --scope deps    # repair with scope=deps
- *   dsh doctor fix --scope full    # repair with scope=full
+ *   dsh-doctor                     # diagnose (read-only)
+ *   dsh-doctor diagnose            # same
+ *   dsh-doctor fix                 # repair with scope=safe (journaled)
+ *   dsh-doctor fix --scope deps    # repair with scope=deps
+ *   dsh-doctor fix --scope full    # repair with scope=full
+ *   dsh-doctor rollback            # undo the most recent repair (LIFO)
+ *   dsh-doctor rollback --list     # list journals
+ *   dsh-doctor rollback --id <id>  # undo a specific journal
+ *   dsh-doctor setup               # register to system PATH
  *
  * Options:
  *   --profile <name>   DSH profile (default: web)
@@ -17,7 +21,7 @@
  *   -V, --version      show version
  */
 
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { execSync } from 'node:child_process'
@@ -25,18 +29,19 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { runDiagnostic } from './diagnose.js'
 import { runRepair, type RepairScope } from './repair.js'
+import { listJournals, rollbackJournal } from './journal.js'
 
 // ── ANSI helpers (zero-dep) ────────────────────────────────
 const isTTY = process.stdout.isTTY
 const c = {
-  reset:   isTTY ? '\x1b[0m'  : '',
-  bold:    isTTY ? '\x1b[1m'  : '',
-  dim:     isTTY ? '\x1b[2m'  : '',
-  red:     isTTY ? '\x1b[31m' : '',
-  green:   isTTY ? '\x1b[32m' : '',
-  yellow:  isTTY ? '\x1b[33m' : '',
-  cyan:    isTTY ? '\x1b[36m' : '',
-  white:   isTTY ? '\x1b[37m' : '',
+  reset:   isTTY ? '[0m'  : '',
+  bold:    isTTY ? '[1m'  : '',
+  dim:     isTTY ? '[2m'  : '',
+  red:     isTTY ? '[31m' : '',
+  green:   isTTY ? '[32m' : '',
+  yellow:  isTTY ? '[33m' : '',
+  cyan:    isTTY ? '[36m' : '',
+  white:   isTTY ? '[37m' : '',
 }
 
 function mark(status: string): string {
@@ -48,13 +53,14 @@ function mark(status: string): string {
     case 'skipped': return c.dim    + '[SKIP]' + c.reset
     case 'failed':  return c.red    + '[XX] ' + c.reset
     case 'info':    return c.dim    + '[--] ' + c.reset
+    case 'undone':  return c.green  + '[UNDO]' + c.reset
+    case 'manual':  return c.yellow + '[MANUAL]' + c.reset
     default:        return '     '
   }
 }
 
 // ── Version (embedded at build time) ────────────────────────
-const VERSION = '0.2.0'
-
+const VERSION = '0.3.0'
 
 // ── Setup: register to system PATH ─────────────────────────
 function getNpmGlobalBin(): string | null {
@@ -76,7 +82,6 @@ function isInPath(dir: string): boolean {
 function getShellConfig(): { file: string; name: string } {
   const home = homedir()
   const shell = process.env.SHELL || ''
-  
   if (shell.includes('zsh') || existsSync(join(home, '.zshrc'))) {
     return { file: join(home, '.zshrc'), name: '.zshrc' }
   }
@@ -97,19 +102,14 @@ function runSetup(): void {
     process.exit(2)
   }
 
-  // Ensure global bin dir exists
   if (!existsSync(globalBin)) {
     mkdirSync(globalBin, { recursive: true })
   }
 
-  // Copy the self-contained bundle
   const bundleSource = join(dirname(fileURLToPath(import.meta.url)), 'cli.bundle.js')
-  
   if (existsSync(bundleSource)) {
     const bundleDest = join(globalBin, 'dsh-doctor-bundle.js')
     copyFileSync(bundleSource, bundleDest)
-    
-    // Create platform wrappers
     if (process.platform === 'win32') {
       writeFileSync(join(globalBin, 'dsh-doctor.cmd'), '@ECHO off\nnode "' + bundleDest + '" %*\n')
       writeFileSync(join(globalBin, 'dsh-doctor.ps1'), '& node "' + bundleDest + '" @args\n')
@@ -120,16 +120,13 @@ function runSetup(): void {
     console.log(c.green + '✓ Installed CLI to: ' + globalBin + c.reset)
   } else {
     console.error(c.red + 'Error: CLI bundle not found at ' + bundleSource + c.reset)
-    console.error(c.dim + 'Run `pnpm run build` first.' + c.reset)
     process.exit(2)
   }
 
-  // Check PATH
   if (!isInPath(globalBin)) {
     console.log('')
     console.log(c.yellow + '⚠ ' + globalBin + ' is not in your PATH.' + c.reset)
     console.log('')
-    
     if (process.platform === 'win32') {
       console.log('To add it, run in PowerShell (as Admin):')
       console.log(c.cyan + '  [Environment]::SetEnvironmentVariable("Path", $env:Path + ";' + globalBin + '", [EnvironmentVariableTarget]::User)' + c.reset)
@@ -141,30 +138,21 @@ function runSetup(): void {
       } else {
         console.log(c.cyan + '  export PATH="' + globalBin + ':$PATH"' + c.reset)
       }
-      console.log('')
-      console.log('Or run:')
-      console.log(c.cyan + "  echo 'export PATH=\"" + globalBin + ":$PATH\"' >> ~/" + shell.name + c.reset)
-      console.log(c.cyan + '  source ~/' + shell.name + c.reset)
     }
     console.log('')
   } else {
-    console.log(c.dim + '  PATH check: ✓ ' + globalBin + ' is in PATH' + c.reset)
-    console.log('')
     console.log(c.green + c.bold + '✓ dsh-doctor is ready to use.' + c.reset)
-    console.log('')
   }
 }
 
-
-
-
-
 // ── Arg parsing (minimal, no deps) ─────────────────────────
 interface CliArgs {
-  command: 'diagnose' | 'fix' | 'setup'
+  command: 'diagnose' | 'fix' | 'rollback' | 'setup'
   profile: string
   port: number
   scope: RepairScope
+  id: string
+  list: boolean
   help: boolean
   version: boolean
 }
@@ -175,20 +163,26 @@ function parseArgs(argv: string[]): CliArgs {
     profile: 'web',
     port: 3080,
     scope: 'safe',
+    id: '',
+    list: false,
     help: false,
     version: false,
   }
 
   let i = 0
-  // Skip 'node' and script path
   while (i < argv.length && !argv[i].startsWith('-')) {
     const tok = argv[i]
     if (tok === 'diagnose' || tok === 'diag' || tok === 'check') {
       args.command = 'diagnose'
     } else if (tok === 'fix' || tok === 'repair') {
       args.command = 'fix'
+    } else if (tok === 'rollback' || tok === 'undo') {
+      args.command = 'rollback'
+    } else if (tok === 'journals' || tok === 'list') {
+      args.command = 'rollback'
+      args.list = true
     } else if (tok === 'setup' || tok === 'install' || tok === 'register') {
-      args.command = 'setup' as any
+      args.command = 'setup'
     }
     i++
   }
@@ -199,6 +193,8 @@ function parseArgs(argv: string[]): CliArgs {
       args.help = true
     } else if (tok === '-V' || tok === '--version') {
       args.version = true
+    } else if (tok === '--list') {
+      args.list = true
     } else if (tok === '--profile' && i + 1 < argv.length) {
       args.profile = argv[++i]
     } else if (tok.startsWith('--profile=')) {
@@ -211,6 +207,10 @@ function parseArgs(argv: string[]): CliArgs {
       args.scope = argv[++i] as RepairScope
     } else if (tok.startsWith('--scope=')) {
       args.scope = tok.slice('--scope='.length) as RepairScope
+    } else if (tok === '--id' && i + 1 < argv.length) {
+      args.id = argv[++i]
+    } else if (tok.startsWith('--id=')) {
+      args.id = tok.slice('--id='.length)
     }
     i++
   }
@@ -220,20 +220,23 @@ function parseArgs(argv: string[]): CliArgs {
 
 // ── Help text ──────────────────────────────────────────────
 const HELP = `
-${c.bold}dsh doctor${c.reset} — DeepSeek Harness diagnostic & repair CLI
+${c.bold}dsh doctor${c.reset} — DeepSeek Harness diagnostic, repair & rollback CLI
 
 ${c.bold}Usage:${c.reset}
-  dsh doctor [command] [options]
+  dsh-doctor [command] [options]
 
 ${c.bold}Commands:${c.reset}
   diagnose, diag, check   Read-only diagnosis (default)
-  fix, repair             Apply repairs (idempotent, backs up before overwriting)
+  fix, repair             Apply journaled repairs (reversible)
+  rollback, undo          Undo a repair (LIFO); --list to show journals
   setup, install          Register dsh-doctor command to system PATH
 
 ${c.bold}Options:${c.reset}
   --profile <name>        DSH profile to inspect (default: web)
   --port <number>         Web port to check (default: 3080)
   --scope <level>         Repair scope: safe | deps | full (default: safe)
+  --id <id>               Journal id for rollback (default: most recent)
+  --list                  List journals instead of rolling back
   -h, --help              Show this help
   -V, --version           Show version
 
@@ -243,11 +246,12 @@ ${c.bold}Repair scopes:${c.reset}
   full    + stop residual DSH processes (skipped when healthy)
 
 ${c.bold}Examples:${c.reset}
-  dsh doctor                          # diagnose web profile
-  dsh doctor --profile headless       # diagnose headless profile
-  dsh doctor fix                      # safe repair
-  dsh doctor fix --scope deps         # repair + reinstall deps
-  dsh doctor fix --scope full         # full repair
+  dsh-doctor                          # diagnose web profile
+  dsh-doctor fix                      # safe repair (journaled)
+  dsh-doctor fix --scope deps         # repair + reinstall deps
+  dsh-doctor rollback                 # undo the most recent repair
+  dsh-doctor rollback --list          # list all repair journals
+  dsh-doctor rollback --id doctor-... # undo a specific journal
   dsh-doctor setup                    # register to PATH manually
 `
 
@@ -287,11 +291,47 @@ function renderRepair(value: Awaited<ReturnType<typeof runRepair>>): void {
   const applied = c.green + value.appliedCount + ' applied' + c.reset
   const failed = value.failedCount > 0 ? c.red + value.failedCount + ' failed' + c.reset : c.dim + '0 failed' + c.reset
   console.log('  ' + applied + '  ' + failed)
+  if (value.journalId) {
+    console.log('  ' + c.cyan + 'journal: ' + value.journalId + c.reset + c.dim + '  (undo with: dsh-doctor rollback --id ' + value.journalId + ')' + c.reset)
+  }
   console.log()
   if (value.failedCount === 0) {
     console.log(c.green + c.bold + '✓ ' + value.summary + c.reset)
   } else {
     console.log(c.yellow + c.bold + '⚠ ' + value.summary + c.reset)
+  }
+  console.log()
+}
+
+function renderRollback(result: NonNullable<ReturnType<typeof rollbackJournal>>): void {
+  console.log()
+  console.log(c.bold + 'DSH Rollback Result' + c.reset + c.dim + '  (journal: ' + result.journalId + ')' + c.reset)
+  console.log()
+  for (const s of result.steps) {
+    console.log('  ' + mark(s.status) + ' ' + s.detail)
+  }
+  console.log()
+  const undone = c.green + result.undoneCount + ' undone' + c.reset
+  const failed = result.failedCount > 0 ? c.red + result.failedCount + ' failed' + c.reset : c.dim + '0 failed' + c.reset
+  const manual = result.manualCount > 0 ? c.yellow + result.manualCount + ' manual' + c.reset : c.dim + '0 manual' + c.reset
+  console.log('  ' + undone + '  ' + failed + '  ' + manual)
+  console.log()
+  console.log(c.green + c.bold + '✓ ' + result.summary + c.reset)
+  console.log()
+}
+
+function renderJournals(): void {
+  const journals = listJournals()
+  console.log()
+  console.log(c.bold + 'DSH Repair Journals' + c.reset)
+  console.log()
+  if (journals.length === 0) {
+    console.log('  (none)')
+  } else {
+    for (const j of journals) {
+      console.log('  ' + c.cyan + j.id + c.reset)
+      console.log('      ' + c.dim + j.createdAt + '  profile=' + j.profile + '  scope=' + j.scope + '  steps=' + j.entries.length + c.reset)
+    }
   }
   console.log()
 }
@@ -320,10 +360,23 @@ async function main(): Promise<void> {
       const report = await runDiagnostic(args.profile, args.port)
       renderDiagnostic(report)
       process.exit(report.failCount > 0 ? 1 : 0)
-    } else {
+    } else if (args.command === 'fix') {
       const report = await runRepair(args.profile, args.port, args.scope)
       renderRepair(report)
       process.exit(report.failedCount > 0 ? 1 : 0)
+    } else {
+      // rollback
+      if (args.list) {
+        renderJournals()
+        process.exit(0)
+      }
+      const result = args.id ? rollbackJournal(args.id) : (listJournals().length > 0 ? rollbackJournal(listJournals()[0].id) : null)
+      if (result === null) {
+        console.error(c.red + 'No journal found to roll back.' + c.reset)
+        process.exit(1)
+      }
+      renderRollback(result)
+      process.exit(result.failedCount > 0 ? 1 : 0)
     }
   } catch (err: any) {
     console.error(c.red + 'Error: ' + (err?.message ?? String(err)) + c.reset)
